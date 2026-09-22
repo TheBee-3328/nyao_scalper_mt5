@@ -17,10 +17,21 @@
 #property strict
 
 // Windows API for Algo Trading Button Control
-#define MT_WMCMD_EXPERTS 32851
-#define WM_COMMAND 0x0111
-#define GA_ROOT 2
-#include <WinAPI\winapi.mqh>
+//
+// IMPORTANT:
+// Leave NYAO_ENABLE_WINAPI_ALGO_TOGGLE undefined for Strategy Tester/backtests.
+// Uncomment the #define below only when building the EA for a live/chart run.
+// The WinAPI header imports Windows APIs, and MT5 Strategy Tester rejects DLL
+// loading before OnInit when such imports are present.
+//
+// #define NYAO_ENABLE_WINAPI_ALGO_TOGGLE
+
+#ifdef NYAO_ENABLE_WINAPI_ALGO_TOGGLE
+   #define MT_WMCMD_EXPERTS 32851
+   #define WM_COMMAND 0x0111
+   #define GA_ROOT 2
+   #include <WinAPI\winapi.mqh>
+#endif
 
 // Dialog Controls for Password Input
 #include <Controls\Dialog.mqh>
@@ -5617,15 +5628,30 @@ void CheckAlgoTradingStatus()
 }
 
 // Toggle  disable algo trading in MT5
+//
+// The tester-safe build intentionally does not touch the terminal-wide
+// Algo Trading switch. All EA-level safety gates remain active, and the
+// caller has already closed positions before reaching this function.
+// This is necessary because WinAPI imports are loaded at EX5 load time,
+// before runtime tester checks can protect the call.
 void DisableAlgoTrading()
 {
-    bool Status = (bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED);
+#ifdef NYAO_ENABLE_WINAPI_ALGO_TOGGLE
+    // Extra runtime guard: even a live-build EX5 must never attempt to
+    // manipulate the terminal-wide UI switch from the Strategy Tester.
+    if(MQLInfoInteger(MQL_TESTER) != 0)
+        return;
+
+    bool status = (bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED);
     
-    if(Status)
+    if(status)
     {
         HANDLE hChart = (HANDLE)ChartGetInteger(ChartID(), CHART_WINDOW_HANDLE);
         PostMessageW(GetAncestor(hChart, GA_ROOT), WM_COMMAND, MT_WMCMD_EXPERTS, 0);
     }
+#else
+    // Backtest-safe build: intentionally no Windows/DLL call.
+#endif
 }
 
 // +------------------------------------------------------------------+
